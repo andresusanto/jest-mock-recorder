@@ -68,6 +68,9 @@ export function mockClass<
           return Promise.resolve(res).then((r) => {
             recording[serilizedArgs] = r;
             fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
+            console.warn(
+              `Recording done and saved for ${className} with args ${serilizedArgs}.`
+            );
             return r;
           });
         }
