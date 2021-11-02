@@ -36,3 +36,33 @@ test("getting user from database", async () => {
   );
 });
 ```
+
+or if you need to restore the original implementation of the class function:
+
+```ts
+import { mockClass } from "jest-mock-recorder";
+import { ExampleDatabaseClient } from "example-database-client";
+
+test("getting user from database", async () => {
+  const restore = mockClass(ExampleDatabaseClient, "query"); // <-- just this one line
+  ///
+  /// .. some code
+  ///
+
+  // do some test
+  await expect(yourFn(a, b, c, d)).resolves.toEqual(expectedResult);
+
+  // need to restore?
+  restore();
+
+  //
+  // do other stuff here...
+  //
+
+  //
+  // you can mock it again later:
+  const restore2 = mockClass(ExampleDatabaseClient, "query");
+
+  // do other stuff
+});
+```

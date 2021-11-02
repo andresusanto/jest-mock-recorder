@@ -48,7 +48,7 @@ export function mockClass<
     fs.readFileSync(fileName).toString("utf8") || "{}"
   );
 
-  jest
+  const mock = jest
     .spyOn(mockedClass.prototype, mockedMethod)
     .mockImplementation(function (this: T, ...args) {
       const serilizedArgs = JSON.stringify(args);
@@ -83,4 +83,8 @@ export function mockClass<
       }
       return res;
     });
+
+  return () => {
+    mock.mockRestore();
+  };
 }

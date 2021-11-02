@@ -151,3 +151,62 @@ test("using unitTestName to resolve conflict", () => {
   expect(callCountA).toBe(1);
   expect(callCountB).toBe(1);
 });
+
+test("restoring the implementation of mocked class", () => {
+  let callCount = 0;
+
+  class TestRestore {
+    public testMethod(a: string, b: Array<string>) {
+      callCount++;
+      return `${a} and ${b.join(".")}`;
+    }
+  }
+
+  const restore = mockClass(TestRestore, "testMethod");
+
+  const testA = new TestRestore();
+
+  const retA = testA.testMethod("a", ["b", "c"]);
+  const retB = testA.testMethod("a", ["b", "c"]);
+  const retC = testA.testMethod("a", ["b", "c"]);
+  expect(retA).toBe("a and b.c");
+  expect(retB).toBe("a and b.c");
+  expect(retC).toBe("a and b.c");
+  expect(callCount).toBe(1);
+
+  restore();
+  const retD = testA.testMethod("a", ["b", "c"]);
+  expect(retD).toBe("a and b.c");
+  expect(callCount).toBe(2);
+
+  const retE = testA.testMethod("a", ["b", "c"]);
+  expect(retE).toBe("a and b.c");
+  expect(callCount).toBe(3);
+
+  const testB = new TestRestore();
+  const retF = testB.testMethod("a", ["b", "c"]);
+  expect(retF).toBe("a and b.c");
+  expect(callCount).toBe(4);
+
+  const retG = testB.testMethod("a", ["b", "c"]);
+  expect(retG).toBe("a and b.c");
+  expect(callCount).toBe(5);
+
+  const restore2 = mockClass(TestRestore, "testMethod");
+
+  const testC = new TestRestore();
+  const retH = testA.testMethod("a", ["b", "c"]);
+  const retI = testB.testMethod("a", ["b", "c"]);
+  const retJ = testC.testMethod("a", ["b", "c"]);
+  expect(retH).toBe("a and b.c");
+  expect(retI).toBe("a and b.c");
+  expect(retJ).toBe("a and b.c");
+
+  // because we have recording
+  expect(callCount).toBe(5);
+
+  restore2();
+  const retK = testA.testMethod("a", ["b", "c"]);
+  expect(retK).toBe("a and b.c");
+  expect(callCount).toBe(6);
+});
