@@ -10,6 +10,13 @@ type FunctionPropertyNames<T> = {
 }[keyof T] &
   string;
 
+function printArgs(arg: string): string {
+  if (arg.length > 20) {
+    return arg.substring(0, 20) + "...";
+  }
+  return arg;
+}
+
 /**
  * Options to be used by the mock recorder
  */
@@ -55,12 +62,16 @@ export function mockClass<
       let res = recording[serilizedArgs];
       if (!res && process.env["MOCK_RECORDER"] !== "record")
         throw new Error(
-          `MOCK_RECORDER is not set to "record" but no recording found for ${className} with args ${serilizedArgs}.`
+          `MOCK_RECORDER is not set to "record" but no recording found for ${className} with args ${printArgs(
+            serilizedArgs
+          )}.`
         );
 
       if (!res) {
         console.warn(
-          `No recording found for ${className} with args ${serilizedArgs}. Recording...`
+          `No recording found for ${className} with args ${printArgs(
+            serilizedArgs
+          )}. Recording...`
         );
         res = originalMethod.apply(this, args);
 
@@ -69,7 +80,9 @@ export function mockClass<
             recording[serilizedArgs] = r;
             fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
             console.warn(
-              `Recording done and saved for ${className} with args ${serilizedArgs}.`
+              `Recording done and saved for ${className} with args ${printArgs(
+                serilizedArgs
+              )}.`
             );
             return r;
           });
@@ -78,7 +91,9 @@ export function mockClass<
         recording[serilizedArgs] = res;
         fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
         console.warn(
-          `Recording done and saved for ${className} with args ${serilizedArgs}.`
+          `Recording done and saved for ${className} with args ${printArgs(
+            serilizedArgs
+          )}.`
         );
       }
       return res;
