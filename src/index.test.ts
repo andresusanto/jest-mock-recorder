@@ -61,6 +61,31 @@ test("throwing error when given invalid input", () => {
   );
 });
 
+test("using custom args serializer", () => {
+  let callCount = 0;
+  class TestCustomArgsSerializer {
+    public testMethod(a: string) {
+      callCount++;
+      return { a };
+    }
+  }
+
+  mockClass(TestCustomArgsSerializer, "testMethod", {
+    argsSerializer: ([a]) => {
+      return `custom-${a}`;
+    },
+  });
+
+  const testA = new TestCustomArgsSerializer();
+  const retA = testA.testMethod("a");
+  const retB = testA.testMethod("b");
+  const retC = testA.testMethod("a");
+  expect(retA).toEqual({ a: "a" });
+  expect(retB).toEqual({ a: "b" });
+  expect(retC).toEqual({ a: "a" });
+  expect(callCount).toBe(2);
+});
+
 test("serialization of non-promise method", () => {
   let callCount = 0;
   class TestSerializationNonPromise {

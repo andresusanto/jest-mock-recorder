@@ -27,7 +27,7 @@ function printArgs(arg: string): string {
 /**
  * Options to be used by the mock recorder
  */
-export interface MockRecorderOptions<T> {
+export interface MockRecorderOptions<T, I> {
   /** Unit test name. Useful to resolve mock conflict */
   unitTestName?: string;
 
@@ -39,10 +39,13 @@ export interface MockRecorderOptions<T> {
 
   /** Serializer and Deserializer for the mocked function */
   serDe?: SerDe<T>;
+
+  /** Serializer used to serialize the input arguments */
+  argsSerializer?: (args: I) => string;
 }
 
-function getFileName<T>(
-  opts: MockRecorderOptions<T> | undefined,
+function getFileName<T, I>(
+  opts: MockRecorderOptions<T, I> | undefined,
   mockName: string
 ) {
   return path.join(
@@ -64,7 +67,7 @@ function createMock<T, M extends Function>(
   originalFn: M,
   opts:
     | (M extends (...args: any) => any
-        ? MockRecorderOptions<ReturnType<M>>
+        ? MockRecorderOptions<ReturnType<M>, Parameters<M>>
         : never)
     | undefined
 ) {
@@ -78,7 +81,9 @@ function createMock<T, M extends Function>(
   );
 
   return function mockImplementation(this: T, ...args: any) {
-    const serilizedArgs = JSON.stringify(args);
+    const serilizedArgs =
+      (opts?.argsSerializer && opts?.argsSerializer(args)) ??
+      JSON.stringify(args);
     let res =
       recording[serilizedArgs] && deserializer(recording[serilizedArgs]);
     if (!res && process.env["MOCK_RECORDER"] !== "record")
@@ -142,7 +147,7 @@ export function mockClass<
   mockedClass: IPrototype<T>,
   mockedMethod: M,
   opts?: T[M] extends (...args: any) => any
-    ? MockRecorderOptions<ReturnType<T[M]>>
+    ? MockRecorderOptions<ReturnType<T[M]>, Parameters<T[M]>>
     : never
 ) {
   const mockName = `${mockedClass.prototype.constructor.name}.${mockedMethod}`;
@@ -176,7 +181,7 @@ export function mockObject<
   mockedObject: T,
   mockedMethod: M,
   opts?: T[M] extends (...args: any) => any
-    ? MockRecorderOptions<ReturnType<T[M]>>
+    ? MockRecorderOptions<ReturnType<T[M]>, Parameters<T[M]>>
     : never
 ) {
   const mockName = `${mockedObject.constructor.name}.${mockedMethod}`;
