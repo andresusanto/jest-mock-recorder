@@ -1,10 +1,64 @@
 import fs from "fs-extra";
-import { mockClass } from ".";
+import { mockClass, mockObject } from ".";
 
 beforeAll(() => {
-  process.env.MOCK_RECORDER = "record";
   fs.removeSync("__tests__");
   jest.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+beforeEach(() => {
+  process.env.MOCK_RECORDER = "record";
+});
+
+test("throwing error when given invalid input", () => {
+  const TestObject = {
+    testMethod: null as unknown as (x: any) => any,
+  };
+
+  expect(() => mockObject(TestObject, "testMethod")).toThrowError(
+    "Method Object.testMethod not found"
+  );
+});
+
+test("throwing error when mode is not record and no recording is found", () => {
+  process.env.MOCK_RECORDER = undefined;
+
+  class TestClass {
+    public testMethod(a: string, b: Array<string>) {}
+  }
+
+  mockClass(TestClass, "testMethod");
+
+  const testA = new TestClass();
+
+  expect(() => testA.testMethod("a", ["b", "c"])).toThrow(
+    'MOCK_RECORDER is not set to "record" but no recording found for TestClass.testMethod with args ["a",["b","c"]].'
+  );
+  expect(() =>
+    testA.testMethod("a", [
+      "b",
+      "c",
+      "asdsadsadasdsadsadsdasdasdsadsadsadsadsaasddasadsdasasd",
+    ])
+  ).toThrow(
+    'MOCK_RECORDER is not set to "record" but no recording found for TestClass.testMethod with args ["a",["b","c","asdsa....'
+  );
+});
+
+test("throwing error when given invalid input", () => {
+  const TestObject = {
+    testMethod: null as unknown as (x: any) => any,
+  };
+  class TestClass {
+    public testMethod: (x: any) => any = null as any;
+  }
+
+  expect(() => mockObject(TestObject, "testMethod")).toThrowError(
+    "Method Object.testMethod not found"
+  );
+  expect(() => mockClass(TestClass, "testMethod")).toThrowError(
+    "Method TestClass.testMethod not found"
+  );
 });
 
 test("recording and replaying non-promise class method", () => {
@@ -207,6 +261,61 @@ test("restoring the implementation of mocked class", () => {
 
   restore2();
   const retK = testA.testMethod("a", ["b", "c"]);
+  expect(retK).toBe("a and b.c");
+  expect(callCount).toBe(6);
+});
+
+test("restoring the implementation of mocked object", () => {
+  let callCount = 0;
+
+  const TestObject = {
+    testMethod(a: string, b: Array<string>) {
+      callCount++;
+      return `${a} and ${b.join(".")}`;
+    },
+  };
+
+  const restore = mockObject(TestObject, "testMethod");
+
+  const retA = TestObject.testMethod("a", ["b", "c"]);
+  const retB = TestObject.testMethod("a", ["b", "c"]);
+  const retC = TestObject.testMethod("a", ["b", "c"]);
+  expect(retA).toBe("a and b.c");
+  expect(retB).toBe("a and b.c");
+  expect(retC).toBe("a and b.c");
+  expect(callCount).toBe(1);
+
+  restore();
+  const retD = TestObject.testMethod("a", ["b", "c"]);
+  expect(retD).toBe("a and b.c");
+  expect(callCount).toBe(2);
+
+  const retE = TestObject.testMethod("a", ["b", "c"]);
+  expect(retE).toBe("a and b.c");
+  expect(callCount).toBe(3);
+
+  const retF = TestObject.testMethod("a", ["b", "c"]);
+  expect(retF).toBe("a and b.c");
+  expect(callCount).toBe(4);
+
+  const retG = TestObject.testMethod("a", ["b", "c"]);
+  expect(retG).toBe("a and b.c");
+  expect(callCount).toBe(5);
+
+  const restore2 = mockObject(TestObject, "testMethod");
+
+  const retH = TestObject.testMethod("a", ["b", "c"]);
+  const retI = TestObject.testMethod("a", ["b", "c"]);
+  const retJ = TestObject.testMethod("a", ["b", "c"]);
+  expect(retH).toBe("a and b.c");
+  expect(retI).toBe("a and b.c");
+  expect(retJ).toBe("a and b.c");
+
+  // because we have recording
+  expect(callCount).toBe(5);
+
+  restore2();
+  const retK = TestObject.testMethod("a", ["b", "c"]);
   expect(retK).toBe("a and b.c");
   expect(callCount).toBe(6);
 });
