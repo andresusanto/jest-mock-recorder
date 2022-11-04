@@ -61,6 +61,95 @@ test("throwing error when given invalid input", () => {
   );
 });
 
+test("serialization of non-promise method", () => {
+  let callCount = 0;
+  class TestSerializationNonPromise {
+    public testMethod(a: string) {
+      callCount++;
+      return { a: new Error(a) };
+    }
+  }
+
+  mockClass(TestSerializationNonPromise, "testMethod", {
+    serDe: {
+      serializer: ({ a }) => {
+        return a.message;
+      },
+      deserializer: (input) => {
+        return { a: new Error(input) };
+      },
+    },
+  });
+
+  const testA = new TestSerializationNonPromise();
+  const retA = testA.testMethod("a");
+  const retB = testA.testMethod("b");
+  const retC = testA.testMethod("a");
+  expect(retA).toEqual({ a: new Error("a") });
+  expect(retB).toEqual({ a: new Error("b") });
+  expect(retC).toEqual({ a: new Error("a") });
+  expect(callCount).toBe(2);
+});
+
+test("serialization of promise method", async () => {
+  let callCount = 0;
+  class TestSerializationPromise {
+    public async testMethod(a: string) {
+      callCount++;
+      return { a: Promise.resolve(a) };
+    }
+  }
+
+  mockClass(TestSerializationPromise, "testMethod", {
+    serDe: {
+      serializer: async (input) => {
+        const { a } = await input;
+        return a;
+      },
+      deserializer: (input) => {
+        return Promise.resolve({ a: Promise.resolve(input) });
+      },
+    },
+  });
+
+  const testA = new TestSerializationPromise();
+  const retA = await testA.testMethod("a");
+  const retB = await testA.testMethod("b");
+  const retC = await testA.testMethod("a");
+  const retD = await testA.testMethod("b");
+  expect(retA).toEqual({ a: Promise.resolve("a") });
+  expect(retB).toEqual({ a: Promise.resolve("b") });
+  expect(retC).toEqual({ a: Promise.resolve("a") });
+  expect(retD).toEqual({ a: Promise.resolve("b") });
+  expect(callCount).toBe(2);
+});
+
+test("using async serializer for non promise method", () => {
+  let callCount = 0;
+  class TestInvalidAsyncSerializer {
+    public testMethod(a: string) {
+      callCount++;
+      return { a: new Error(a) };
+    }
+  }
+
+  mockClass(TestInvalidAsyncSerializer, "testMethod", {
+    serDe: {
+      serializer: async ({ a }) => {
+        return a.message;
+      },
+      deserializer: (input) => {
+        return { a: new Error(input) };
+      },
+    },
+  });
+
+  const testA = new TestInvalidAsyncSerializer();
+  expect(() => testA.testMethod("a")).toThrowError(
+    "Promise based serializer only supported when the original function returned Promise."
+  );
+});
+
 test("recording and replaying non-promise class method", () => {
   let callCount = 0;
 

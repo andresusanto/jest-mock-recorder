@@ -10,6 +10,13 @@ type FunctionPropertyNames<T> = {
 }[keyof T] &
   string;
 
+export type Serializer<T> = (input: T) => string | Promise<string>;
+export type Deserializer<T> = (input: string) => T;
+export type SerDe<T> = {
+  serializer: Serializer<T>;
+  deserializer: Deserializer<T>;
+};
+
 function printArgs(arg: string): string {
   if (arg.length > 20) {
     return arg.substring(0, 20) + "...";
@@ -20,7 +27,7 @@ function printArgs(arg: string): string {
 /**
  * Options to be used by the mock recorder
  */
-export interface MockRecorderOptions {
+export interface MockRecorderOptions<T> {
   /** Unit test name. Useful to resolve mock conflict */
   unitTestName?: string;
 
@@ -29,9 +36,15 @@ export interface MockRecorderOptions {
 
   /** Recorded fixture folder. Defaults to _fixtures. If set to `null`, no folder will be used. */
   fixtureFolder?: string | null;
+
+  /** Serializer and Deserializer for the mocked function */
+  serDe?: SerDe<T>;
 }
 
-function getFileName(opts: MockRecorderOptions | undefined, mockName: string) {
+function getFileName<T>(
+  opts: MockRecorderOptions<T> | undefined,
+  mockName: string
+) {
   return path.join(
     process.cwd(),
     ...(opts?.unitTestFolder !== null
@@ -48,16 +61,26 @@ function getFileName(opts: MockRecorderOptions | undefined, mockName: string) {
 function createMock<T, M extends Function>(
   fileName: string,
   mockName: string,
-  originalFn: M
+  originalFn: M,
+  opts:
+    | (M extends (...args: any) => any
+        ? MockRecorderOptions<ReturnType<M>>
+        : never)
+    | undefined
 ) {
+  const serializer =
+    opts?.serDe?.serializer || ((x: any) => JSON.stringify(x, null, 2));
+  const deserializer = opts?.serDe?.deserializer || JSON.parse;
+
   fs.ensureFileSync(fileName);
-  const recording = JSON.parse(
+  const recording: Record<string, string> = JSON.parse(
     fs.readFileSync(fileName).toString("utf8") || "{}"
   );
 
   return function mockImplementation(this: T, ...args: any) {
     const serilizedArgs = JSON.stringify(args);
-    let res = recording[serilizedArgs];
+    let res =
+      recording[serilizedArgs] && deserializer(recording[serilizedArgs]);
     if (!res && process.env["MOCK_RECORDER"] !== "record")
       throw new Error(
         `MOCK_RECORDER is not set to "record" but no recording found for ${mockName} with args ${printArgs(
@@ -74,8 +97,8 @@ function createMock<T, M extends Function>(
       res = originalFn.apply(this, args);
 
       if (typeof res.then === "function") {
-        return Promise.resolve(res).then((r) => {
-          recording[serilizedArgs] = r;
+        return Promise.resolve(res).then(async (r) => {
+          recording[serilizedArgs] = await serializer(r);
           fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
           console.warn(
             `Recording done and saved for ${mockName} with args ${printArgs(
@@ -86,7 +109,13 @@ function createMock<T, M extends Function>(
         });
       }
 
-      recording[serilizedArgs] = res;
+      const serialized = serializer(res);
+      if (typeof serialized !== "string")
+        throw new Error(
+          "Promise based serializer only supported when the original function returned Promise."
+        );
+
+      recording[serilizedArgs] = serialized;
       fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
       console.warn(
         `Recording done and saved for ${mockName} with args ${printArgs(
@@ -109,7 +138,13 @@ function createMock<T, M extends Function>(
 export function mockClass<
   T extends {},
   M extends FunctionPropertyNames<Required<T>>
->(mockedClass: IPrototype<T>, mockedMethod: M, opts?: MockRecorderOptions) {
+>(
+  mockedClass: IPrototype<T>,
+  mockedMethod: M,
+  opts?: T[M] extends (...args: any) => any
+    ? MockRecorderOptions<ReturnType<T[M]>>
+    : never
+) {
   const mockName = `${mockedClass.prototype.constructor.name}.${mockedMethod}`;
   const originalMethod = mockedClass.prototype[mockedMethod];
   if (typeof originalMethod !== "function")
@@ -118,7 +153,7 @@ export function mockClass<
   const mock = jest
     .spyOn(mockedClass.prototype, mockedMethod)
     .mockImplementation(
-      createMock(getFileName(opts, mockName), mockName, originalMethod)
+      createMock(getFileName(opts, mockName), mockName, originalMethod, opts)
     );
 
   return () => {
@@ -137,7 +172,13 @@ export function mockClass<
 export function mockObject<
   T extends {},
   M extends FunctionPropertyNames<Required<T>>
->(mockedObject: T, mockedMethod: M, opts?: MockRecorderOptions) {
+>(
+  mockedObject: T,
+  mockedMethod: M,
+  opts?: T[M] extends (...args: any) => any
+    ? MockRecorderOptions<ReturnType<T[M]>>
+    : never
+) {
   const mockName = `${mockedObject.constructor.name}.${mockedMethod}`;
   const originalMethod = mockedObject[mockedMethod];
   if (typeof originalMethod !== "function")
@@ -146,7 +187,7 @@ export function mockObject<
   const mock = jest
     .spyOn(mockedObject, mockedMethod)
     .mockImplementation(
-      createMock(getFileName(opts, mockName), mockName, originalMethod)
+      createMock(getFileName(opts, mockName), mockName, originalMethod, opts)
     );
 
   return () => {
