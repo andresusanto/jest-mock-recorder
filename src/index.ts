@@ -10,6 +10,8 @@ type FunctionPropertyNames<T> = {
 }[keyof T] &
   string;
 
+type Recording = Record<string, { promise: boolean; data: string }>;
+
 export type Serializer<T> = (input: T) => string | Promise<string>;
 export type Deserializer<T> = (input: string) => T;
 export type SerDe<T> = {
@@ -41,7 +43,7 @@ export interface MockRecorderOptions<T, I> {
   serDe?: SerDe<T>;
 
   /** Serializer used to serialize the input arguments */
-  argsSerializer?: (args: I) => string;
+  argsSerializer?: (args: I) => string | Promise<string>;
 }
 
 function getFileName<T, I>(
@@ -76,16 +78,16 @@ function createMock<T, M extends Function>(
   const deserializer = opts?.serDe?.deserializer || JSON.parse;
 
   fs.ensureFileSync(fileName);
-  const recording: Record<string, string> = JSON.parse(
+  const recording: Recording = JSON.parse(
     fs.readFileSync(fileName).toString("utf8") || "{}"
   );
 
-  return function mockImplementation(this: T, ...args: any) {
-    const serilizedArgs =
-      (opts?.argsSerializer && opts?.argsSerializer(args)) ??
-      JSON.stringify(args);
-    let res =
-      recording[serilizedArgs] && deserializer(recording[serilizedArgs]);
+  function mockImplementation(this: T, serilizedArgs: string, ...args: any) {
+    const res = recording[serilizedArgs] && {
+      promise: recording[serilizedArgs].promise,
+      data: deserializer(recording[serilizedArgs].data),
+    };
+
     if (!res && process.env["MOCK_RECORDER"] !== "record")
       throw new Error(
         `MOCK_RECORDER is not set to "record" but no recording found for ${mockName} with args ${printArgs(
@@ -99,11 +101,15 @@ function createMock<T, M extends Function>(
           serilizedArgs
         )}. Recording...`
       );
-      res = originalFn.apply(this, args);
 
-      if (typeof res.then === "function") {
-        return Promise.resolve(res).then(async (r) => {
-          recording[serilizedArgs] = await serializer(r);
+      const data = originalFn.apply(this, args);
+
+      if (typeof data.then === "function") {
+        return Promise.resolve(data).then(async (r) => {
+          recording[serilizedArgs] = {
+            promise: true,
+            data: await serializer(r),
+          };
           fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
           console.warn(
             `Recording done and saved for ${mockName} with args ${printArgs(
@@ -114,21 +120,41 @@ function createMock<T, M extends Function>(
         });
       }
 
-      const serialized = serializer(res);
+      const serialized = serializer(data);
       if (typeof serialized !== "string")
         throw new Error(
           "Promise based serializer only supported when the original function returned Promise."
         );
 
-      recording[serilizedArgs] = serialized;
+      recording[serilizedArgs] = { promise: false, data: serialized };
       fs.writeFileSync(fileName, JSON.stringify(recording, null, 2));
       console.warn(
         `Recording done and saved for ${mockName} with args ${printArgs(
           serilizedArgs
         )}.`
       );
+      return data;
     }
-    return res;
+
+    return res.promise ? Promise.resolve(res.data) : res.data;
+  }
+
+  return function mock(this: T, ...args: any) {
+    const serilizedArgs =
+      (opts?.argsSerializer && opts?.argsSerializer(args)) ??
+      JSON.stringify(args);
+
+    if (typeof serilizedArgs !== "string")
+      return Promise.resolve(serilizedArgs).then((resolvedArgs) => {
+        const res = mockImplementation.apply(this, [resolvedArgs, ...args]);
+        if (typeof res.then !== "function")
+          throw new Error(
+            "Promise based argument serializer only supported when the original function returned Promise."
+          );
+        return res;
+      });
+
+    return mockImplementation.apply(this, [serilizedArgs, ...args]);
   };
 }
 

@@ -149,6 +149,33 @@ test("serialization of promise method", async () => {
   expect(callCount).toBe(2);
 });
 
+test("argument serialization of promise method", async () => {
+  let callCount = 0;
+  class TestArgSerializationPromise {
+    public async testMethod(a: string) {
+      callCount++;
+      return { a };
+    }
+  }
+
+  mockClass(TestArgSerializationPromise, "testMethod", {
+    argsSerializer: async ([a]) => {
+      return `promise-${a}`;
+    },
+  });
+
+  const testA = new TestArgSerializationPromise();
+  const retA = await testA.testMethod("a");
+  const retB = await testA.testMethod("b");
+  const retC = await testA.testMethod("a");
+  const retD = await testA.testMethod("b");
+  expect(retA).toEqual({ a: "a" });
+  expect(retB).toEqual({ a: "b" });
+  expect(retC).toEqual({ a: "a" });
+  expect(retD).toEqual({ a: "b" });
+  expect(callCount).toBe(2);
+});
+
 test("using async serializer for non promise method", () => {
   let callCount = 0;
   class TestInvalidAsyncSerializer {
@@ -172,6 +199,27 @@ test("using async serializer for non promise method", () => {
   const testA = new TestInvalidAsyncSerializer();
   expect(() => testA.testMethod("a")).toThrowError(
     "Promise based serializer only supported when the original function returned Promise."
+  );
+});
+
+test("using async argument serializer for non promise method", () => {
+  let callCount = 0;
+  class TestInvalidAsyncArgsSerializer {
+    public testMethod(a: string) {
+      callCount++;
+      return { a: new Error(a) };
+    }
+  }
+
+  mockClass(TestInvalidAsyncArgsSerializer, "testMethod", {
+    argsSerializer: async ([a]) => {
+      return a;
+    },
+  });
+
+  const testA = new TestInvalidAsyncArgsSerializer();
+  expect(() => testA.testMethod("a")).rejects.toThrowError(
+    "Promise based argument serializer only supported when the original function returned Promise."
   );
 });
 
